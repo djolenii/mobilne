@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.MySplashScreen" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/yellowish</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/menza_splash_logo</item>
+        <item name="postSplashScreenTheme">@style/Theme.RMASProjekat</item>
+
+    </style>
+    <style name="Theme.RMASProjekat" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
