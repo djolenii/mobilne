@@ -111,6 +111,9 @@ fun ObjavaScreen(canteenViewModel: CanteenViewModel, authViewModel: AuthViewMode
                             statusText = ""
                             selectedImageUri = null
 
+                            // Refetch user information
+                            authViewModel.refreshCurrentUser()
+
                             // Refetch statuses (this will depend on how you've set up the CanteenViewModel)
                             canteenViewModel.fetchStatusesForCurrentCanteen()
                         }
@@ -168,20 +171,38 @@ private fun saveStatusToFirestore(
     canteenId: String,
     onComplete: (Boolean, String) -> Unit
 ) {
-    val status = hashMapOf(
-        "user" to db.collection("users").document(userId),
-        "message" to statusText,
-        "timestamp" to com.google.firebase.Timestamp.now(),
-        "imageUrl" to imageUrl,
-        "likes" to 0
-    )
-    db.collection("canteens").document(canteenId)
-        .collection("statuses")
-        .add(status)
-        .addOnSuccessListener {
+    val userRef = db.collection("users").document(userId)
+
+    // First, read the user's current postCount
+    userRef.get().addOnSuccessListener { document ->
+        val currentPostCount = document.getLong("postCount") ?: 0
+
+        // Start the transaction
+        db.runTransaction { transaction ->
+            // Create the status data
+            val status = hashMapOf(
+                "user" to userRef,
+                "message" to statusText,
+                "timestamp" to com.google.firebase.Timestamp.now(),
+                "imageUrl" to imageUrl,
+                "likesCount" to 0
+            )
+
+            // Add the status to the canteen's statuses collection
+            val canteenStatusRef = db.collection("canteens").document(canteenId)
+                .collection("statuses").document()
+            transaction.set(canteenStatusRef, status)
+
+            // Increment the user's postCount
+            transaction.update(userRef, "postCount", currentPostCount + 1)
+
+        }.addOnSuccessListener {
             onComplete(true, "Status successfully added!")
-        }
-        .addOnFailureListener { e ->
+        }.addOnFailureListener { e ->
             onComplete(false, "Error adding status: $e")
         }
+
+    }.addOnFailureListener { e ->
+        onComplete(false, "Error fetching user data: $e")
+    }
 }

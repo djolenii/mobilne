@@ -19,6 +19,9 @@ fun StatusScreen(canteenViewModel: CanteenViewModel, authViewModel: AuthViewMode
     val canteenName = currentCanteen?.name ?: "N/A"
     val canteenNickname = currentCanteen?.nickname ?: "N/A"
 
+    val statuses by canteenViewModel.statuses.collectAsState()
+
+
     Column(modifier = Modifier.padding(16.dp)) {
 
         Text(
@@ -32,8 +35,10 @@ fun StatusScreen(canteenViewModel: CanteenViewModel, authViewModel: AuthViewMode
         Spacer(modifier = Modifier.height(16.dp))
 
         LazyColumn {
-            items(currentCanteen?.statuses ?: emptyList()) { status ->
-                StatusItem(status = status, authViewModel = authViewModel)
+            items(statuses.values.toList(), key = { it.id ?: "" }) { status ->
+                key(status.id) {
+                    StatusItem(status = status, authViewModel = authViewModel, canteenViewModel = canteenViewModel)
+                }
             }
         }
     }

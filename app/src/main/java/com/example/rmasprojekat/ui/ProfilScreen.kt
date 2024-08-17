@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material3.*
@@ -42,15 +43,16 @@ fun ProfilScreen(authViewModel: AuthViewModel) {
         uri?.let {
             isLoading = true
             feedbackMessage = ""
-            uploadProfileImage(it, user?.id ?: "") { success, message ->
+            uploadProfileImage(it, user?.id ?: "") { success, message, imageUrl ->
                 isLoading = false
                 feedbackMessage = message
-                if (success) {
-                    authViewModel.updateProfileImageUrl(message) // Update user's imageUrl in AuthViewModel
+                if (success && imageUrl != null) {
+                    authViewModel.updateProfileImageUrl(imageUrl) // Update user's imageUrl in AuthViewModel
                 }
             }
         }
     }
+
 
     val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
     val formattedMemberSince = user?.memberSince?.toDate()?.let { dateFormat.format(it) }
@@ -64,7 +66,7 @@ fun ProfilScreen(authViewModel: AuthViewModel) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
                     }
                     IconButton(onClick = { authViewModel.signOut() }) {
-                        Icon(Icons.Default.ExitToApp, contentDescription = "Sign Out")
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Sign Out")
                     }
                 }
             )
@@ -98,7 +100,7 @@ fun ProfilScreen(authViewModel: AuthViewModel) {
             Spacer(modifier = Modifier.height(8.dp))
 
             if (feedbackMessage.isNotEmpty()) {
-                Text(feedbackMessage, color = if (isLoading) Color.Blue else Color.Red)
+                Text(feedbackMessage, color = if (isLoading) Color.Blue else Color.Green)
             }
 
 
@@ -110,8 +112,8 @@ fun ProfilScreen(authViewModel: AuthViewModel) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            ProfileInfoCard(title = "Broj objava", value = user?.postCount?.toString() ?: "0")
-            ProfileInfoCard(title = "Broj recenzija", value = user?.reviewCount?.toString() ?: "0")
+            ProfileInfoCard(title = "Statusi", value = user?.postCount?.toString() ?: "0")
+            ProfileInfoCard(title = "Sviđanja", value = user?.likesCount?.toString() ?: "0")
             ProfileInfoCard(title = "Član od", value = formattedMemberSince ?: "N/A")
         }
     }
@@ -145,7 +147,7 @@ fun ProfileInfoCard(title: String, value: String) {
 private fun uploadProfileImage(
     imageUri: Uri,
     userId: String,
-    onComplete: (Boolean, String) -> Unit
+    onComplete: (Boolean, String, String?) -> Unit
 ) {
     val storage = Firebase.storage
     val db = Firebase.firestore
@@ -158,14 +160,14 @@ private fun uploadProfileImage(
                 db.collection("users").document(userId)
                     .update("imageUrl", uri.toString())
                     .addOnSuccessListener {
-                        onComplete(true, uri.toString())
+                        onComplete(true, "Profilna slika uspešno ažurirana", uri.toString())
                     }
                     .addOnFailureListener { e ->
-                        onComplete(false, "Error updating profile image: $e")
+                        onComplete(false, "Greška pri ažuriranju profilne slike: $e", null)
                     }
             }
         }
         .addOnFailureListener { e ->
-            onComplete(false, "Error uploading image: $e")
+            onComplete(false, "Greška pri upload-u slike: $e", null)
         }
 }

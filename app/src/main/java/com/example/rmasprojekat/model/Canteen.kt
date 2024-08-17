@@ -1,7 +1,5 @@
 package com.example.rmasprojekat.model
 
-import com.example.rmasprojekat.model.Review
-import com.example.rmasprojekat.model.Status
 import androidx.annotation.Keep
 
 @Keep

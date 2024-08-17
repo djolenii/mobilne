@@ -2,6 +2,7 @@ package com.example.rmasprojekat.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.rmasprojekat.model.Status
 import com.example.rmasprojekat.model.User
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
@@ -60,7 +61,7 @@ class AuthViewModel : ViewModel() {
                         email = email,
                         memberSince = Timestamp.now(),
                         postCount = 0,
-                        reviewCount = 0
+                        likesCount = 0
                     )
                     saveUserToFirestore(user)
                     _currentUser.value = user
@@ -102,11 +103,10 @@ class AuthViewModel : ViewModel() {
         _authState.value = AuthState.Initial
     }
 
-    fun fetchUserDetails(userRef: DocumentReference, onResult: (User?) -> Unit) {
+    fun fetchUserDetails(userRef: DocumentReference, forceRefresh: Boolean = false, onResult: (User?) -> Unit) {
         val userId = userRef.id
 
-        // Check if the user data is already cached
-        if (userCache.containsKey(userId)) {
+        if (!forceRefresh && userCache.containsKey(userId)) {
             onResult(userCache[userId])
             return
         }
@@ -123,6 +123,21 @@ class AuthViewModel : ViewModel() {
         }
     }
 
+    fun refreshCurrentUser() {
+        viewModelScope.launch {
+            val userId = auth.currentUser?.uid ?: return@launch
+            try {
+                val user = getUserFromFirestore(userId)
+                _currentUser.value = user
+            } catch (e: Exception) {
+                // Handle error, e.g., log or display a message
+                println("Error refreshing user: ${e.message}")
+            }
+        }
+    }
+
+
+
     fun updateProfileImageUrl(imageUrl: String) {
         val userId = auth.currentUser?.uid ?: return
         viewModelScope.launch {
@@ -136,6 +151,52 @@ class AuthViewModel : ViewModel() {
             }
         }
     }
+
+    fun deleteStatus(status: Status, canteenViewModel: CanteenViewModel) {
+        val currentCanteen = canteenViewModel.getCurrentCanteen()
+        val canteenId = currentCanteen?.id ?: ""  // Get the canteen ID
+
+        viewModelScope.launch {
+            try {
+                status.id?.let { statusId ->
+                    // Delete the status from the canteen's statuses subcollection
+                    db.collection("canteens").document(canteenId)
+                        .collection("statuses").document(statusId)
+                        .delete().await()
+
+                    println("Status deleted successfully from canteen $canteenId")
+
+                    // Update the user's post count
+                    val userId = auth.currentUser?.uid ?: return@launch
+                    val userRef = db.collection("users").document(userId)
+
+                    db.runTransaction { transaction ->
+                        val snapshot = transaction.get(userRef)
+                        val currentPostCount = snapshot.getLong("postCount") ?: 0
+                        val newPostCount = maxOf(currentPostCount - 1, 0) // Ensure it doesn't go below 0
+                        transaction.update(userRef, "postCount", newPostCount)
+                    }.await()
+
+                    println("User post count updated")
+
+                    // Refresh the current user to reflect the updated post count
+                    refreshCurrentUser()
+                    canteenViewModel.fetchStatusesForCurrentCanteen()
+
+                } ?: run {
+                    println("Status ID is null. Cannot delete.")
+                }
+            } catch (e: Exception) {
+                println("Error deleting status: ${e.message}")
+                e.printStackTrace()
+            }
+        }
+    }
+
+
+
+
+// refreshCurrentUser()
 
     private suspend fun saveUserToFirestore(user: User) {
         withContext(Dispatchers.IO) {
