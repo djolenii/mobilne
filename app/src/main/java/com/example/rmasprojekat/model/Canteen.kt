@@ -1,6 +1,7 @@
 package com.example.rmasprojekat.model
 
 import androidx.annotation.Keep
+import com.google.firebase.firestore.GeoPoint
 
 @Keep
 data class Canteen(
@@ -15,5 +16,7 @@ data class Canteen(
     val imageUrl: String = "",
     val order: Int = 0,
     var reviews: List<Review> = emptyList(),
-    var statuses: List<Status> = emptyList()
+    var statuses: List<Status> = emptyList(),
+    val coordinates: GeoPoint? = null,
+    var mapReviews: List<MapReview> = emptyList()
 )

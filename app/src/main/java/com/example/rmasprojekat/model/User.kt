@@ -12,5 +12,6 @@ data class User(
     val imageUrl: String? = null,
     val memberSince: Timestamp = Timestamp.now(),
     val postCount: Int = 0,
-    var likesCount: Int = 0
+    var likesCount: Int = 0,
+    var reviewCount: Int = 0
 )

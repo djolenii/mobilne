@@ -25,18 +25,24 @@ import kotlinx.coroutines.CompletableDeferred
 import java.util.Locale
 import android.Manifest
 import android.content.pm.PackageManager
+import android.location.Location
 import androidx.core.content.ContextCompat
 import com.example.rmasprojekat.model.Comment
 import com.example.rmasprojekat.model.Like
+import com.example.rmasprojekat.model.MapReview
 import com.example.rmasprojekat.model.User
+import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flow
 
 
 class CanteenViewModel : ViewModel() {
     private val db = Firebase.firestore
+
 
     private val _canteens = MutableLiveData<List<Canteen>>()
     val canteens: LiveData<List<Canteen>> = _canteens
@@ -56,6 +62,9 @@ class CanteenViewModel : ViewModel() {
 
     private val _statuses = MutableStateFlow<Map<String, Status>>(emptyMap())
     val statuses: StateFlow<Map<String, Status>> = _statuses
+
+    private val _nearbyCanteens = MutableStateFlow<List<Canteen>>(emptyList())
+    val nearbyCanteens: StateFlow<List<Canteen>> = _nearbyCanteens
 
     fun fetchCanteensForCity(city: String) {
         if (city == loadedCity && _canteens.value?.isNotEmpty() == true) {
@@ -91,6 +100,7 @@ class CanteenViewModel : ViewModel() {
         val updatedCanteenList = canteenList.map { canteen ->
             val reviewsRef = db.collection("canteens/${canteen.id}/reviews")
             val statusesRef = db.collection("canteens/${canteen.id}/statuses")
+            val mapReviewsRef = db.collection("canteens/${canteen.id}/mapReviews")
 
             try {
                 val reviewsResult = reviewsRef.get().await()
@@ -105,10 +115,18 @@ class CanteenViewModel : ViewModel() {
                         fetchLikesAndComments(this, statusDoc.reference)
                     }
                 }
+
+                val mapReviewsResult = mapReviewsRef.get().await()
+                canteen.mapReviews = mapReviewsResult.documents.mapNotNull { mapReviewDoc ->
+                    mapReviewDoc.toObject(MapReview::class.java)?.apply {
+                        id = mapReviewDoc.id
+                    }
+                }
             } catch (e: Exception) {
                 // Handle failure to fetch reviews or statuses
                 canteen.reviews = emptyList()
                 canteen.statuses = emptyList()
+                canteen.mapReviews = emptyList()
             }
 
             canteen
@@ -215,13 +233,8 @@ class CanteenViewModel : ViewModel() {
                 put(status.id ?: "", updatedStatus)
             }
 
-            // Update the status document with the new comment
             statusRef.update("comments", FieldValue.arrayUnion(newComment)).await()
 
-            // Optionally, you could update the user's comment count if you're tracking that
-            // db.collection("users").document(user.id).update("commentCount", FieldValue.increment(1)).await()
-
-            // Refresh the statuses for the current canteen to ensure consistency
             fetchStatusesForCurrentCanteen()
         }
     }
@@ -358,6 +371,112 @@ class CanteenViewModel : ViewModel() {
                 // Handle any errors
             }
         }
+    }
+
+
+    fun fetchNearbyCanteens(userLocation: LatLng, radius: Double) {
+        viewModelScope.launch {
+            val allCanteens = _canteens.value ?: emptyList()
+            val nearby = allCanteens.filter { canteen ->
+                canteen.coordinates?.let { coords ->
+                    val canteenLocation = Location("").apply {
+                        latitude = coords.latitude
+                        longitude = coords.longitude
+                    }
+                    val userLoc = Location("").apply {
+                        latitude = userLocation.latitude
+                        longitude = userLocation.longitude
+                    }
+                    userLoc.distanceTo(canteenLocation) <= radius
+                } ?: false
+            }
+            _nearbyCanteens.value = nearby
+        }
+    }
+
+    fun addMapReview(canteenId: String, review: MapReview, currentUser: User?) {
+        viewModelScope.launch {
+            val canteenRef = db.collection("canteens").document(canteenId)
+            val newReviewRef = canteenRef.collection("mapReviews").document()
+
+
+            try {
+                val reviewWithTimestamp = review.copy(
+                    id = newReviewRef.id,
+                    timestamp = System.currentTimeMillis(),
+                    user = currentUser?.let { db.document("users/${it.id}") }
+                )
+                newReviewRef.set(reviewWithTimestamp).await()
+
+                // Ažuriranje lokalnog stanja
+                _canteens.value = _canteens.value?.map { canteen ->
+                    if (canteen.id == canteenId) {
+                        canteen.copy(mapReviews = canteen.mapReviews + reviewWithTimestamp)
+                    } else canteen
+                }
+                updateNearbyCanteens()
+                // Povećavanje reviewCount korisnika
+                currentUser?.let { user ->
+                    val userRef = db.collection("users").document(user.id)
+                    userRef.update("reviewCount", FieldValue.increment(1)).await()
+                }
+            } catch (e: Exception) {
+                // Obrada greške (npr. prikaz toast poruke)
+                println("Greška pri dodavanju map review-a: ${e.message}")
+            }
+        }
+    }
+
+
+    fun fetchMapReviews(canteenId: String) {
+        viewModelScope.launch {
+            val canteenRef = db.collection("canteens").document(canteenId)
+            val mapReviews = canteenRef.collection("mapReviews").get().await()
+                .documents.mapNotNull { it.toObject(MapReview::class.java) }
+
+            // Fetch user data for each review
+            val reviewsWithUserData = mapReviews.map { review ->
+                review.user?.get()?.await()?.toObject(User::class.java)?.let { user ->
+                    review to user
+                }
+            }.filterNotNull()
+
+            // Update local state
+            _canteens.value = _canteens.value?.map { canteen ->
+                if (canteen.id == canteenId) {
+                    canteen.copy(mapReviews = reviewsWithUserData.map { it.first })
+                } else canteen
+            }
+            updateNearbyCanteens()
+        }
+    }
+
+    // Dodajemo novu funkciju za dohvatanje rang liste
+    fun fetchUserRankings(): Flow<Map<String, List<User>>> = flow {
+        try {
+            val usersSnapshot = db.collection("users").get().await()
+            val users = usersSnapshot.toObjects(User::class.java)
+
+            val likesRanking = users.sortedByDescending { it.likesCount }.take(3)
+            val statusesRanking = users.sortedByDescending { it.postCount }.take(3)
+            val reviewsRanking = users.sortedByDescending { it.reviewCount }.take(3)
+
+            emit(mapOf(
+                "likes" to likesRanking,
+                "statuses" to statusesRanking,
+                "reviews" to reviewsRanking
+            ))
+        } catch (e: Exception) {
+            println("Greška pri dohvatanju rang liste: ${e.message}")
+            emit(emptyMap())
+        }
+    }
+
+    private fun updateNearbyCanteens() {
+        val currentNearby = _nearbyCanteens.value
+        _nearbyCanteens.value = _canteens.value?.filter { canteen ->
+            currentNearby.any { it.id == canteen.id }
+        } ?: emptyList()
     }
 }
 

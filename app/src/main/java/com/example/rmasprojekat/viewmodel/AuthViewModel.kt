@@ -61,7 +61,8 @@ class AuthViewModel : ViewModel() {
                         email = email,
                         memberSince = Timestamp.now(),
                         postCount = 0,
-                        likesCount = 0
+                        likesCount = 0,
+                        reviewCount = 0
                     )
                     saveUserToFirestore(user)
                     _currentUser.value = user
