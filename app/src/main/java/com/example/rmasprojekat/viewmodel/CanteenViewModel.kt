@@ -26,11 +26,13 @@ import java.util.Locale
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.Location
+import android.util.Log
 import androidx.core.content.ContextCompat
 import com.example.rmasprojekat.model.Comment
 import com.example.rmasprojekat.model.Like
 import com.example.rmasprojekat.model.MapReview
 import com.example.rmasprojekat.model.User
+import com.example.rmasprojekat.services.SubscriptionManager
 import com.google.android.gms.maps.model.LatLng
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FieldValue
@@ -65,6 +67,11 @@ class CanteenViewModel : ViewModel() {
 
     private val _nearbyCanteens = MutableStateFlow<List<Canteen>>(emptyList())
     val nearbyCanteens: StateFlow<List<Canteen>> = _nearbyCanteens
+
+    private val subscriptionManager = SubscriptionManager()
+    private val _subscriptions = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    val subscriptions: StateFlow<Map<String, Boolean>> = _subscriptions
+
 
     fun fetchCanteensForCity(city: String) {
         if (city == loadedCity && _canteens.value?.isNotEmpty() == true) {
@@ -478,7 +485,45 @@ class CanteenViewModel : ViewModel() {
             currentNearby.any { it.id == canteen.id }
         } ?: emptyList()
     }
+
+
+    fun toggleCanteenSubscription(canteenId: String, userId: String) {
+        viewModelScope.launch {
+            try {
+                val isCurrentlySubscribed = subscriptionManager.isSubscribedToCanteen(userId, canteenId)
+                if (isCurrentlySubscribed) {
+                    subscriptionManager.unsubscribeFromCanteen(userId, canteenId)
+                } else {
+                    subscriptionManager.subscribeToCanteen(userId, canteenId)
+                }
+                updateSubscriptions(userId)
+            } catch (e: Exception) {
+                // Handle any errors, perhaps log them or update a state to show an error message
+                Log.e("CanteenViewModel", "Error toggling subscription", e)
+            }
+        }
+    }
+
+    fun isSubscribedToCanteen(userId: String, canteenId: String): Flow<Boolean> = flow {
+        emit(subscriptionManager.isSubscribedToCanteen(userId, canteenId))
+    }
+
+    private fun updateSubscriptions(userId: String) {
+        viewModelScope.launch {
+            val subscribedCanteens = _canteens.value?.associate { canteen ->
+                (canteen.id ?: "") to subscriptionManager.isSubscribedToCanteen(userId, canteen.id ?: "")
+            } ?: emptyMap()
+            _subscriptions.value = subscribedCanteens
+        }
+    }
+
+
+
+
+
+
 }
+
 
 
 suspend fun getCityName(context: Context, latitude: Double, longitude: Double): String = withContext(

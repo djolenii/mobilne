@@ -31,6 +31,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -182,6 +184,7 @@ fun MapScreen(
         }
 
         selectedCanteen?.let { canteen ->
+            val isSubscribed by canteenViewModel.isSubscribedToCanteen(currentUser?.id ?: "", canteen.id ?: "").collectAsState(initial = false)
             CanteenInfoCard(
                 canteen = canteen,
                 isNearCanteen = isNearCanteen,
@@ -191,7 +194,11 @@ fun MapScreen(
                     selectedMealType = mealType
                     showMealReviews = true
                 },
-                canAddReview = canAddReview(canteen, currentUser)
+                canAddReview = canAddReview(canteen, currentUser),
+                isSubscribed = isSubscribed,
+                onSubscriptionToggle = {
+                    canteenViewModel.toggleCanteenSubscription(canteen.id ?: "", currentUser?.id ?: "")
+                }
             )
         }
 
@@ -267,7 +274,9 @@ fun CanteenInfoCard(
     onAddReview: () -> Unit,
     onDismiss: () -> Unit,
     onMealTypeSelected: (String) -> Unit,
-    canAddReview: Boolean
+    canAddReview: Boolean,
+    isSubscribed: Boolean,
+    onSubscriptionToggle: () -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -277,6 +286,20 @@ fun CanteenInfoCard(
         Column(
             modifier = Modifier.padding(16.dp)
         ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = canteen.name, style = MaterialTheme.typography.headlineSmall)
+                IconButton(onClick = onSubscriptionToggle) {
+                    Icon(
+                        imageVector = if (isSubscribed) Icons.Default.Notifications else Icons.Default.NotificationsNone,
+                        contentDescription = if (isSubscribed) "Unsubscribe" else "Subscribe",
+                        tint = if (isSubscribed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
             AsyncImage(
                 model = canteen.imageUrl,
                 contentDescription = "Canteen image",
