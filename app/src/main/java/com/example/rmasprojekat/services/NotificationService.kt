@@ -11,7 +11,6 @@ import com.example.rmasprojekat.MainActivity
 import com.example.rmasprojekat.R
 
 class NotificationService(private val context: Context) {
-
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     init {
@@ -22,25 +21,25 @@ class NotificationService(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Canteen Reviews",
+                "Canteen Notifications",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Notifications for new canteen reviews"
+                description = "Notifications for canteen reviews and proximity"
             }
             notificationManager.createNotificationChannel(channel)
         }
     }
 
-    fun showNotification(canteenName: String, reviewType: String) {
+    fun showNotification(title: String, content: String) {
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         val pendingIntent = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_IMMUTABLE)
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_like)
-            .setContentTitle("New Review for $canteenName")
-            .setContentText("A new $reviewType review has been added")
+            .setSmallIcon(R.drawable.menza_splash_logo)
+            .setContentTitle(title)
+            .setContentText(content)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -49,6 +48,6 @@ class NotificationService(private val context: Context) {
     }
 
     companion object {
-        private const val CHANNEL_ID = "CanteenReviewChannel"
+        private const val CHANNEL_ID = "CanteenNotificationChannel"
     }
 }

@@ -517,12 +517,65 @@ class CanteenViewModel : ViewModel() {
         }
     }
 
+    fun addReview(canteenId: String, review: Review, currentUser: User?) {
+        viewModelScope.launch {
+            try {
 
+                if (currentUser == null) {
+                    // Handle the case where there's no logged-in user
+                    return@launch
+                }
 
+                val canteenRef = db.collection("canteens").document(canteenId)
+                val newReviewRef = canteenRef.collection("reviews").document()
 
+                val reviewWithUserAndId = review.copy(
+                    id = newReviewRef.id,
+                    user = db.document("users/${currentUser.id}")
+                )
 
+                newReviewRef.set(reviewWithUserAndId).await()
+
+                // Update local state
+                _canteens.value = _canteens.value?.map { canteen ->
+                    if (canteen.id == canteenId) {
+                        canteen.copy(reviews = canteen.reviews + reviewWithUserAndId)
+                    } else canteen
+                }
+
+                // Refresh the current canteen's reviews
+                fetchReviewsForCurrentCanteen()
+            } catch (e: Exception) {
+                // Handle error
+                println("Error adding review: ${e.message}")
+            }
+        }
+    }
+
+    private fun fetchReviewsForCurrentCanteen() {
+        val currentCanteen = getCurrentCanteen() ?: return
+        viewModelScope.launch {
+            try {
+                val reviewsRef = db.collection("canteens/${currentCanteen.id}/reviews")
+                val reviewsResult = reviewsRef.get().await()
+                val updatedReviews = reviewsResult.toObjects(Review::class.java)
+
+                _canteens.value = _canteens.value?.map { canteen ->
+                    if (canteen.id == currentCanteen.id) {
+                        canteen.copy(reviews = updatedReviews)
+                    } else canteen
+                }
+            } catch (e: Exception) {
+                // Handle error
+                println("Error fetching reviews: ${e.message}")
+            }
+        }
+    }
 
 }
+
+
+
 
 
 

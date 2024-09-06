@@ -52,6 +52,13 @@ class AuthViewModel : ViewModel() {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             try {
+                // Check if username already exists
+                val usernameQuery = db.collection("users").whereEqualTo("username", username).get().await()
+                if (!usernameQuery.isEmpty) {
+                    _authState.value = AuthState.Error("Već postoji korisnik sa tim korisničkim imenom")
+                    return@launch
+                }
+
                 val result = auth.createUserWithEmailAndPassword(email, password).await()
                 val firebaseUser = result.user
                 if (firebaseUser != null) {
@@ -68,13 +75,16 @@ class AuthViewModel : ViewModel() {
                     _currentUser.value = user
                     _authState.value = AuthState.Authenticated
                 } else {
-                    _authState.value = AuthState.Error("Failed to create user")
-
+                    _authState.value = AuthState.Error("Neuspešna registracija")
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Sign up failed")
+                when {
+                    e.message?.contains("email address is already in use") == true ->
+                        _authState.value = AuthState.Error("Već postoji korisnik sa tom email adresom")
+                    else ->
+                        _authState.value = AuthState.Error(e.message ?: "Neuspešna registracija")
+                }
                 println("Error during signUp: ${e.message}")
-
             }
         }
     }
@@ -90,10 +100,11 @@ class AuthViewModel : ViewModel() {
                     _currentUser.value = user
                     _authState.value = AuthState.Authenticated
                 } else {
-                    _authState.value = AuthState.Error("Failed to sign in")
+                    _authState.value = AuthState.Error("Neuspešna prijava")
                 }
             } catch (e: Exception) {
-                _authState.value = AuthState.Error(e.message ?: "Sign in failed")
+                _authState.value = AuthState.Error("Korisničko ime ili lozinka nisu tačni")
+                println("Error during signIn: ${e.message}")
             }
         }
     }
@@ -208,7 +219,7 @@ class AuthViewModel : ViewModel() {
     private suspend fun getUserFromFirestore(uid: String): User {
         return withContext(Dispatchers.IO) {
             val document = db.collection("users").document(uid).get().await()
-            document.toObject(User::class.java) ?: throw Exception("User data not found")
+            document.toObject(User::class.java) ?: throw Exception("")
         }
     }
 }

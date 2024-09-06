@@ -21,22 +21,25 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.example.rmasprojekat.location.LocationManager
 import com.example.rmasprojekat.services.ReviewListenerService
-import com.example.rmasprojekat.ui.AuthScreen
-import com.example.rmasprojekat.ui.MainScreen
-import com.example.rmasprojekat.ui.MapScreen
+import com.example.rmasprojekat.screens.AuthScreen
+import com.example.rmasprojekat.screens.MainScreen
+import com.example.rmasprojekat.screens.MapScreen
 import com.example.rmasprojekat.ui.theme.RMASProjekatTheme
 import com.example.rmasprojekat.viewmodel.AuthState
 import com.example.rmasprojekat.viewmodel.AuthViewModel
 import com.example.rmasprojekat.viewmodel.CanteenViewModel
 import com.example.rmasprojekat.viewmodel.LocationViewModel
-import kotlinx.coroutines.launch
+import androidx.work.*
+import com.example.rmasprojekat.services.NearbyCanteenWorker
+import com.example.rmasprojekat.services.ReviewCheckWorker
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private val authViewModel: AuthViewModel by viewModels()
     private val canteenViewModel: CanteenViewModel by viewModels()
     private lateinit var locationManager: LocationManager
     private lateinit var locationViewModel: LocationViewModel
-    private lateinit var reviewListenerService: ReviewListenerService
+
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -67,7 +70,7 @@ class MainActivity : ComponentActivity() {
 
         locationManager = LocationManager(this)
         locationViewModel = LocationViewModel(locationManager)
-        reviewListenerService = ReviewListenerService(this)
+
 
         installSplashScreen()
         checkLocationPermission()
@@ -80,10 +83,7 @@ class MainActivity : ComponentActivity() {
                 when (authState) {
                     is AuthState.Authenticated -> {
                         MainContent()
-                        // Start listening for reviews when the user is authenticated
-                        authViewModel.currentUser.value?.id?.let { userId ->
-                            reviewListenerService.startListening(userId)
-                        }
+                        setupBackgroundTasks(authViewModel.currentUser.value?.id)
                     }
                     AuthState.Initial -> AuthScreen(authViewModel)
                     is AuthState.Error -> AuthScreen(authViewModel)
@@ -109,6 +109,27 @@ class MainActivity : ComponentActivity() {
                 canteenViewModel = canteenViewModel,
                 onShowMapClicked = { showMap = true },
                 authViewModel = authViewModel
+            )
+        }
+    }
+
+    private fun setupBackgroundTasks(userId: String?) {
+        userId?.let {
+            // Set up periodic review check
+            val reviewCheckRequest = OneTimeWorkRequestBuilder<ReviewCheckWorker>()
+                .setInputData(workDataOf("userId" to it))
+                .build()
+
+            WorkManager.getInstance(this).enqueue(reviewCheckRequest)
+
+            // Set up nearby canteen check
+            val nearbyCanteenRequest = PeriodicWorkRequestBuilder<NearbyCanteenWorker>(2, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                "nearbyCanteenCheck",
+                ExistingPeriodicWorkPolicy.REPLACE,
+                nearbyCanteenRequest
             )
         }
     }

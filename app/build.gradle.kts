@@ -78,6 +78,7 @@ dependencies {
     implementation ("com.google.firebase:firebase-storage-ktx")
     implementation("io.coil-kt:coil-compose:2.3.0")
     implementation("com.google.firebase:firebase-auth")
+    implementation ("androidx.work:work-runtime-ktx:2.7.1")
     implementation(libs.androidx.runtime.livedata)
     implementation(libs.places)
 
